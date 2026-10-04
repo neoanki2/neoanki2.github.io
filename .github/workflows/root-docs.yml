@@ -1,6 +1,7 @@
 name: Root documentation
 
 on:
+  pull_request:
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
@@ -19,13 +20,28 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Check out site publication configuration
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: publication
+      - name: Test documentation source selection
+        run: python3 publication/Scripts/test-resolve-docs-source.py
+      - name: Resolve independently validated documentation source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 publication/Scripts/resolve-docs-source.py
+          --config publication/.github/docs-source.json >> "$GITHUB_OUTPUT"
       - name: Check out canonical documentation source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: neoanki2/neoanki2
-          ref: main
+          ref: ${{ steps.source.outputs.source_sha }}
           path: source
           fetch-depth: 1
+      - name: Validate documentation content
+        run: cd source && swift Scripts/validate-docs.swift
       - name: Configure root URL and build metadata
         run: |
           python3 - <<'PY'
@@ -58,6 +74,7 @@ jobs:
           )
           PY
       - name: Configure Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697
@@ -67,10 +84,12 @@ jobs:
       - name: Validate rendered root site
         run: python3 source/Scripts/validate-built-docs.py _site --base-url https://neoanki2.github.io
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
 
   deploy:
     name: Deploy root documentation
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
