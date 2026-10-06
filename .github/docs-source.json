@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "repository": "neoanki2/neoanki2",
-  "source_sha": "2bed42f576d746087be58e03ac7305ce76cee921",
-  "docs_tree_sha": "7e395e8135b5cc402d95849eabcd32cd9e95934e",
-  "documentation_run_id": 37432906426,
+  "source_sha": "2c7b44b848bf1fd6ca678e70517141d3b3331da6",
+  "docs_tree_sha": "09b3e480b3331170bb5a8bc939478c1096af5661",
+  "documentation_run_id": 37435915452,
   "source_pull_request": 93,
-  "purpose": "Publish independently validated privacy disclosure for optional private iCloud vocabulary-pack transfers while preserving app repository review gates."
+  "purpose": "Publish validated private vocabulary-sync and optional badge/reminder permission disclosures for the current iOS build."
 }
