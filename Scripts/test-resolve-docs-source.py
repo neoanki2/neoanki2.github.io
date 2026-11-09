@@ -65,5 +65,40 @@ class DocumentationSourceTests(unittest.TestCase):
                 with self.assertRaises(ValueError): resolver.resolve(config, self.api)
 
 
+class DispatchedSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.source = "a" * 40
+        self.run = {"head_sha": self.source, "event": "push", "head_branch": "main",
+                    "repository": {"full_name": resolver.SOURCE_REPOSITORY},
+                    "path": ".github/workflows/docs-pages.yml", "status": "in_progress"}
+        self.jobs = [{"name": name, "status": "completed", "conclusion": "success"}
+                     for name in resolver.REQUIRED_DOCUMENTATION_JOBS]
+
+    def api(self, path):
+        if path == "actions/runs/8": return self.run
+        if path == "branches/main": return {"commit": {"sha": self.source}}
+        if path == f"compare/{self.source}...{self.source}": return {"status": "identical"}
+        if path == "actions/runs/8/jobs?filter=latest&per_page=100": return {"jobs": self.jobs}
+        raise AssertionError(path)
+
+    def test_successful_content_jobs_do_not_wait_on_circular_publication(self):
+        self.assertEqual(resolver.resolve_dispatched(self.source, "8", self.api)[0], self.source)
+
+    def test_failed_or_missing_content_job_is_rejected(self):
+        self.jobs[0]["conclusion"] = "failure"
+        with self.assertRaisesRegex(ValueError, "every documentation"):
+            resolver.resolve_dispatched(self.source, "8", self.api)
+
+    def test_untrusted_or_mismatched_run_is_rejected(self):
+        for key, value in [("event", "pull_request"), ("head_branch", "feature"),
+                           ("head_sha", "b" * 40), ("repository", {"full_name": "other/repo"}),
+                           ("path", ".github/workflows/other.yml")]:
+            with self.subTest(key=key):
+                original = self.run[key]; self.run[key] = value
+                with self.assertRaisesRegex(ValueError, "trusted main"):
+                    resolver.resolve_dispatched(self.source, "8", self.api)
+                self.run[key] = original
+
+
 if __name__ == "__main__":
     unittest.main()
