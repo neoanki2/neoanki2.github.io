@@ -60,11 +60,57 @@ def resolve(config, api=github):
     return source, "approved documentation remains pinned until main catches up"
 
 
+REQUIRED_DOCUMENTATION_JOBS = {
+    "Documentation content validation", "API reference and contract",
+    "Documentation and screenshot gate", "Build documentation site",
+}
+
+
+def resolve_dispatched(source, run_id, api=github):
+    """A main-push build may publish after its content jobs, without a circular gate."""
+    if not re.fullmatch(r"[0-9a-f]{40}", source) or not str(run_id).isdigit():
+        raise ValueError("Dispatch requires an exact source SHA and documentation run ID")
+    run = api(f"actions/runs/{run_id}")
+    if (run.get("head_sha") != source or run.get("event") != "push"
+            or run.get("head_branch") != "main"
+            or run.get("repository", {}).get("full_name") != SOURCE_REPOSITORY
+            or run.get("path", "").split("@", 1)[0] != ".github/workflows/docs-pages.yml"):
+        raise ValueError("Dispatched source is not the trusted main documentation workflow")
+    main = api("branches/main")["commit"]["sha"]
+    if api(f"compare/{source}...{main}")["status"] not in ("ahead", "identical"):
+        raise ValueError("Dispatched documentation source is not in main history")
+    jobs = api(f"actions/runs/{run_id}/jobs?filter=latest&per_page=100")["jobs"]
+    succeeded = {job["name"] for job in jobs if job.get("status") == "completed" and job.get("conclusion") == "success"}
+    if not REQUIRED_DOCUMENTATION_JOBS <= succeeded:
+        raise ValueError("Dispatched source has not passed every documentation content/build gate")
+    return source, "exact main source passed independent documentation content and build jobs"
+
+
+def latest_validated(api=github):
+    runs = api("actions/workflows/docs-pages.yml/runs?branch=main&event=push&per_page=20")["workflow_runs"]
+    for run in runs:
+        try:
+            return resolve_dispatched(run["head_sha"], run["id"], api)
+        except ValueError:
+            continue
+    raise ValueError("No recent main documentation build has passed its content gates")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--source-sha")
+    parser.add_argument("--documentation-run-id")
     args = parser.parse_args()
-    source, reason = resolve(json.loads(args.config.read_text()))
+    if bool(args.source_sha) != bool(args.documentation_run_id):
+        parser.error("source SHA and documentation run ID must be supplied together")
+    if args.source_sha:
+        source, reason = resolve_dispatched(args.source_sha, args.documentation_run_id)
+    else:
+        try:
+            source, reason = latest_validated()
+        except ValueError:
+            source, reason = resolve(json.loads(args.config.read_text()))
     print("source_sha=" + source)
     print("selection_reason=" + reason)
 

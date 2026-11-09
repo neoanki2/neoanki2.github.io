@@ -3,6 +3,15 @@ name: Root documentation
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact main app revision with successful documentation content/build jobs
+        required: false
+        type: string
+      documentation_run_id:
+        description: App documentation workflow run proving that revision
+        required: false
+        type: string
   schedule:
     - cron: '17 * * * *'
 
@@ -30,9 +39,14 @@ jobs:
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          python3 publication/Scripts/resolve-docs-source.py
-          --config publication/.github/docs-source.json >> "$GITHUB_OUTPUT"
+          REQUESTED_SOURCE: ${{ inputs.source_sha }}
+          DOCUMENTATION_RUN_ID: ${{ inputs.documentation_run_id }}
+        run: |
+          arguments=(--config publication/.github/docs-source.json)
+          if [[ -n "$REQUESTED_SOURCE" || -n "$DOCUMENTATION_RUN_ID" ]]; then
+            arguments+=(--source-sha "$REQUESTED_SOURCE" --documentation-run-id "$DOCUMENTATION_RUN_ID")
+          fi
+          python3 publication/Scripts/resolve-docs-source.py "${arguments[@]}" >> "$GITHUB_OUTPUT"
       - name: Check out canonical documentation source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
