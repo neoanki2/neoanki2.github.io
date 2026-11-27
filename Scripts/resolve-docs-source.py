@@ -60,9 +60,10 @@ def resolve(config, api=github):
     return source, "approved documentation remains pinned until main catches up"
 
 
+# The source workflow dispatches this publisher after its content and build jobs.
 REQUIRED_DOCUMENTATION_JOBS = {
-    "Documentation content validation", "API reference and contract",
-    "Documentation and screenshot gate", "Build documentation site",
+    "Documentation content validation",
+    "Build documentation site",
 }
 
 

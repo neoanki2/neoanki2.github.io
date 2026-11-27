@@ -71,8 +71,11 @@ class DispatchedSourceTests(unittest.TestCase):
         self.run = {"head_sha": self.source, "event": "push", "head_branch": "main",
                     "repository": {"full_name": resolver.SOURCE_REPOSITORY},
                     "path": ".github/workflows/docs-pages.yml", "status": "in_progress"}
-        self.jobs = [{"name": name, "status": "completed", "conclusion": "success"}
-                     for name in resolver.REQUIRED_DOCUMENTATION_JOBS]
+        self.jobs = [
+            {"name": "Documentation content validation", "status": "completed", "conclusion": "success"},
+            {"name": "Build documentation site", "status": "completed", "conclusion": "success"},
+            {"name": "Publish and verify canonical documentation", "status": "in_progress", "conclusion": None},
+        ]
 
     def api(self, path):
         if path == "actions/runs/8": return self.run
@@ -84,10 +87,18 @@ class DispatchedSourceTests(unittest.TestCase):
     def test_successful_content_jobs_do_not_wait_on_circular_publication(self):
         self.assertEqual(resolver.resolve_dispatched(self.source, "8", self.api)[0], self.source)
 
-    def test_failed_or_missing_content_job_is_rejected(self):
-        self.jobs[0]["conclusion"] = "failure"
-        with self.assertRaisesRegex(ValueError, "every documentation"):
-            resolver.resolve_dispatched(self.source, "8", self.api)
+    def test_each_current_gate_must_succeed(self):
+        original = self.jobs
+        for index in range(2):
+            for result in (None, "failure", "skipped"):
+                with self.subTest(gate=original[index]["name"], result=result):
+                    self.jobs = [job.copy() for job in original]
+                    if result is None:
+                        del self.jobs[index]
+                    else:
+                        self.jobs[index]["conclusion"] = result
+                    with self.assertRaisesRegex(ValueError, "every documentation"):
+                        resolver.resolve_dispatched(self.source, "8", self.api)
 
     def test_untrusted_or_mismatched_run_is_rejected(self):
         for key, value in [("event", "pull_request"), ("head_branch", "feature"),
